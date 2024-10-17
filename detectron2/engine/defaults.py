@@ -69,6 +69,7 @@ def create_ddp_model(model, *, fp16_compression=False, **kwargs):
     """  # noqa
     if comm.get_world_size() == 1:
         return model
+    # print(f"{kwargs=}")
     if "device_ids" not in kwargs:
         kwargs["device_ids"] = [comm.get_local_rank()]
     ddp = DistributedDataParallel(model, **kwargs)
