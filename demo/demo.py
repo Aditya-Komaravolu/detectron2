@@ -11,11 +11,14 @@ import cv2
 import numpy as np
 import tqdm
 
-from detectron2.config import get_cfg
+from detectron2.config import get_cfg, LazyConfig, instantiate
+from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.data.detection_utils import read_image
 from detectron2.utils.logger import setup_logger
+from detectron2.data import MetadataCatalog
 
 from predictor import VisualizationDemo
+from new_baselines_predictor import NewBaselinesVisualizationDemo
 
 # constants
 WINDOW_NAME = "COCO detections"
@@ -64,6 +67,19 @@ def get_parser():
     )
 
     parser.add_argument(
+        "--min_size_test",
+        type=int,
+        default=800,
+        help="Size of the smallest side of the image during testing. Set to zero to disable resize in testing.",
+    )
+    parser.add_argument(
+        "--max_size_test",
+        type=float,
+        default=1333,
+        help="Maximum size of the side of the image during testing.",
+    )
+
+    parser.add_argument(
         "--confidence-threshold",
         type=float,
         default=0.5,
@@ -102,9 +118,41 @@ def main() -> None:
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
 
-    cfg = setup_cfg(args)
+    # cfg = setup_cfg(args)
 
-    demo = VisualizationDemo(cfg)
+    cfg = LazyConfig.load(args.config_file)
+    cfg = LazyConfig.apply_overrides(cfg, args.opts)
+    print("ARGS: ", args.opts)
+
+
+    # cfg = LazyConfig.apply_overrides(cfg, ["DATASETS.TEST=['val']"])
+    # return cfg
+
+    model = instantiate(cfg.model)
+    model.to(cfg.train.device)
+    checkpointer = DetectionCheckpointer(model)
+    checkpointer.load(cfg.train.init_checkpoint)
+
+    model.eval()
+
+    demo = NewBaselinesVisualizationDemo(
+        model=model,
+        min_size_test=args.min_size_test,
+        max_size_test=args.max_size_test,
+        img_format="RGB",
+        metadata_dataset=cfg.dataloader.train.dataset.names,
+    )
+
+    # demo = NewBaselinesVisualizationDemo(cfg)
+
+    # if args.metadata_dataset == "snaglist_train":
+    # MetadataCatalog.get("val").set(thing_classes=["cement_slurry", "honeycomb"])
+    MetadataCatalog.get("train").thing_classes = [
+        'cement_slurry',
+        'honeycomb',
+    ]
+
+
 
     if args.input:
         if len(args.input) == 1:
@@ -114,7 +162,7 @@ def main() -> None:
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
             start_time = time.time()
-            predictions, visualized_output = demo.run_on_image(img)
+            predictions, visualized_output = demo.run_on_image(img, args.confidence_threshold)
             logger.info(
                 "{}: {} in {:.2f}s".format(
                     path,
@@ -126,6 +174,7 @@ def main() -> None:
             )
 
             if args.output:
+                os.makedirs(args.output, exist_ok=True)
                 if os.path.isdir(args.output):
                     assert os.path.isdir(args.output), args.output
                     out_filename = os.path.join(args.output, os.path.basename(path))

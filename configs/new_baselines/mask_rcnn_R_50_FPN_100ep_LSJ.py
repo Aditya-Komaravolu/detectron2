@@ -45,7 +45,7 @@ dataloader.train.mapper.augmentations = [
         min_scale=0.1, max_scale=2.0, target_height=image_size, target_width=image_size
     ),
     L(T.FixedSizeCrop)(crop_size=(image_size, image_size)),
-    L(T.RandomFlip)(horizontal=True),
+    # L(T.RandomFlip)(horizontal=True),
 ]
 
 # recompute boxes due to cropping
